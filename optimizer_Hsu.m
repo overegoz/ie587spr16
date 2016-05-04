@@ -1,6 +1,6 @@
 function [mse, hlu] = optimizer_Hsu(R, Y, testR, testY, algorithm,...
     lambda, num_features, max_iter_outer, max_iter_inner, fold_num,...
-    movieList)
+    movieList, list_len, hlu_d, hlu_alpha)
 %% Collaborative Filtering for the Movie Recommender system 
 % Let's go
 
@@ -198,8 +198,7 @@ initTheta = Theta;
 %  dataset of 1682 movies and 943 users
 %
 
-fprintf('\nTraining collaborative filtering...(lambda: %f,' +...
-    'num_features: %d, max_iter_outer: %d, max_iter_inner: %d)\n',...
+fprintf('\nTraining collaborative filtering...(lambda: %f, num_features: %d, max_iter_outer: %d, max_iter_inner: %d)\n',...
     lambda, num_features, max_iter_outer, max_iter_inner);
     
 if( FMINGCon == 1 )    
@@ -218,8 +217,8 @@ if( FMINGCon == 1 )
     Theta = reshape(theta(num_movies*num_features+1:end), ...
                     num_users, num_features);
 
-    fprintf('[FMINCG] Recommender system learning completed for fold' + ...
-        '%.\n', fold_num);
+    fprintf('[FMINCG] Recommender system learning completed for fold %d.\n'...
+        , fold_num);
     %fprintf('\nProgram paused. Press enter to continue.\n');
     %pause;            
 
@@ -231,32 +230,84 @@ if( FMINGCon == 1 )
     %
 
     prediction_fmincg = X * Theta'; % calculate the predictions
-    my_predictions = prediction_fmincg(:,1) + Ymean; % take my predictions
-
-    [r, ix] = sort(my_predictions, 'descend');
-    adjust = 5.0/max(my_predictions);
-    fprintf('\nTop recommendations for first user:\n');
-    for i=1:20
-        j = ix(i);
-        fprintf('Predicting rating %.1f for movie %s\n', ...
-                my_predictions(j) * adjust, ...
-                movieList{j});
+    %my_predictions = prediction_fmincg(:,1) + Ymean; % take my predictions
+    predictions = prediction_fmincg + repmat(Ymean, 1,...
+        size(prediction_fmincg, 2));    
+    %for k = 1:size(predictions, 1)
+    %    for l = 1:size(predictions, 2)
+    %        if isnan(predictions(k, l)) == 1
+   %             fprintf('%d %d %f %f %f\n', k, l, prediction_fmincg(k, l), predictions(k, l), Ymean(k)); pause;
+    %        end
+    %    end
+    %end
+   %fprintf('%f', Ymean); pause;
+    %hlu = 0;
+    t_half_life = 0;
+    t_max_hlu = 0;
+    for k = 1:num_users
+        max_list = zeros(num_movies, 1);
+        max_list = Y(:, k);
+        for l = 1:size(testY, 1)
+            if testY(l, k) > 0
+                max_list(testR(l, k)) = testY(l, k);
+                if Y(testR(l, k), k) > 0
+                    fprintf('duplicate sample\n');
+                    pause;
+                end
+            end
+        end
+        [max_r, max_ix] = sort(max_list, 'descend');
+        [r, ix] = sort(predictions(:, k), 'descend');
+        adjust = 5.0/max(predictions(:, k));
+        %fprintf('\nTop recommendations for %d user:\n', k);
+        max_hlu = 0;
+        half_life = 0;
+        for l = 1:list_len
+            j = ix(l);
+            %fprintf('User %d:\n', k);
+            %fprintf('Predicting rating %f for movie %s (rated: %f)\n', ...
+            %        predictions(j, k) * adjust, movieList{j}, max_list(j, 1));
+            %fprintf('User rating %f for movie %s\n', ...
+            %        max_r(l), movieList{max_ix(l)});
+            half_life = half_life + (max([max_list(j, 1)-hlu_d, 0])/...
+                (2^((l-1)/(hlu_alpha-1))));
+            max_hlu = max_hlu + (max([max_r(l)-hlu_d, 0])/(2^((l-1)/...
+                (hlu_alpha-1))));
+            %if max_hlu == 0
+                %fprintf('%d %d %f %f\n', k, l, max_r(l), (2^((l-1)/(hlu_alpha-1))));
+            %end
+        end
+        %if max_hlu == 0
+        %    max_hlu = 1;
+        %end
+        %hlu = hlu + (half_life / max_hlu);
+        t_half_life = t_half_life + half_life;
+        t_max_hlu = t_max_hlu + max_hlu;
+        %fprintf('%f %f %f\n', half_life, max_hlu, hlu); %pause;
     end
-
-    fprintf('\n\nOriginal ratings provided vs. estimated:\n');
-    mse = 0; 
+    %hlu = hlu / num_users;
+    hlu = t_half_life / t_max_hlu;
+    fprintf('Half-life utility: %f\n', hlu);
+    if isnan(hlu) == 1
+        pause;
+    end
+    %fprintf('\n\nOriginal ratings provided vs. estimated:\n');
+    training_mse = 0; 
     cnt = 0;
-    for i = 1:size(R, 1)
-        if Y(i, 1) > 0 
-            fprintf('%.2f vs %.2f ... [idx: %04d] %s \n', Y(i, 1), ...
-                     my_predictions(i), i, movieList{i} );
-            mse = mse + (Y(i, 1) - my_predictions(i))^2;
-            cnt = cnt + 1;
+    for j = 1:size(R, 2)
+        for i = 1:size(R, 1)
+            if Y(i, j) > 0 
+                %fprintf('%.2f vs %.2f ... [user: %d, idx: %04d] %s \n',...
+                %    Y(i, j), predictions(i, j), j, i, movieList{i});
+                training_mse = training_mse + (Y(i, j) -...
+                    predictions(i, j))^2;
+                cnt = cnt + 1;
+            end
         end
     end
-    mse = mse / cnt;
-    fprintf('Training mean suquared error: %f on fold %d\n', mse,...
-        fold_num);
+    training_mse = training_mse / cnt;
+    fprintf('Training mean suquared error: %f on fold %d\n',...
+        training_mse, fold_num);
 
     % -----------------------------------------------------------
     % Part 3.3 Check the accuracy of estimation (fmincg)
@@ -272,19 +323,20 @@ if( FMINGCon == 1 )
                 % get the movie index
                 m_id = testR(movie, user);
                 % get the estimated rating
-                est = prediction_fmincg(m_id, user) + Ymean(m_id);
+                est = predictions(m_id, user) + Ymean(m_id);
                 % get the rating given
                 rat = testY(movie, user);
                 % print it out
-                fprintf('USER[%04d]-MOVIE[%04d] rated: %d vs' + ... 
-                    'estimated: %.2f\n', user, m_id, rat, est);
+                %fprintf('USER[%04d]-MOVIE[%04d] rated: %f vs estimated: %.2f\n',...
+                %    user, m_id, rat, est);
                 % Mean square error
                 mse = mse + (est - rat)^2;
             end
         end
     end
-    mse = mse / cnt;
-    fprintf('Testing mean suquared error: %f on fold %d\n', mse, fold_num);
+    mse = sqrt(mse / cnt);
+    fprintf('Testing root mean suquared error: %f on fold %d\n', mse,...
+        fold_num);
 
 
 %end % if FMINGCon
@@ -310,8 +362,8 @@ elseif( GRAD == 1 )
                             num_users, num_features);
         gTheta = gTheta + ((-1 * a/i) .* gradTheta); 
     end
-    fprintf('[GRADIENT] Recommender system learning completed on fold' +...
-        '%d.\n', fold_num);
+    fprintf('[GRADIENT] Recommender system learning completed on fold %d.\n',...
+        fold_num);
 
     % -----------------------------------------------------------
     % 4.2 Recommendations (gradient)
@@ -321,32 +373,62 @@ elseif( GRAD == 1 )
     %
 
     prediction_grad = gX * gTheta'; % calculate the predictions
-    my_predictions = prediction_grad(:,1) + Ymean; % take my predictions
-
-    [r, ix] = sort(my_predictions, 'descend');
-    adjust = 5.0/max(my_predictions);
-    fprintf('\nTop recommendations for first user:\n');
-    for i=1:20
-        j = ix(i);
-        fprintf('Predicting rating %.1f for movie %s\n', ...
-                my_predictions(j) * adjust, ...
-                movieList{j});
+    predictions = prediction_grad + repmat(Ymean, 1,...
+        size(prediction_grad, 2)); % take my predictions
+    t_max_hlu = 0;
+    t_half_life = 0;
+    %hlu = 0;
+    for k = 1:num_users
+        max_list = zeros(num_movies, 1);
+        max_list = Y(:, k);
+        for i = 1:size(testY, 1)
+            if testY(i, k) > 0
+                max_list(testR(i, k)) = testY(i,k);
+            end
+        end
+        [max_r, max_ix] = sort(max_list, 'descend');
+        [r, ix] = sort(predictions(:, k), 'descend');
+        adjust = 5.0/max(predictions(:, k));
+        %fprintf('\nTop recommendations for %d user:\n', k);
+        max_hlu = 0;
+        half_life = 0;
+        for i = 1:list_len
+            j = ix(i);
+            %fprintf('User %d:\n', k);
+            %fprintf('Predicting rating %.1f for movie %s\n', ...
+            %        predictions(j, k) * adjust, movieList{j});
+            max_hlu = max_hlu + (max([max_r(i)-hlu_d, 0])/2^((i-1)/...
+                (hlu_alpha-1)));
+            half_life = half_life + (max([max_list(j, 1)-hlu_d, 0])/...
+                2^((i-1)/(hlu_alpha-1)));
+        end
+        %hlu = hlu + (half_life / max_hlu);
+        t_half_life = t_half_life + half_life;
+        t_max_hlu = t_max_hlu + max_hlu;
     end
-
+    %hlu = hlu / num_users;
+    hlu = t_half_life / t_max_hlu;
+    fprintf('Half-life utility: %f\n', hlu);
+    if isnan(hlu) == 1
+        pause;
+    end
     fprintf('\n\nOriginal ratings provided vs. estimated:\n');
-    mse = 0; 
+    training_mse = 0; 
     cnt = 0;
-    for i = 1:size(R, 1)
-        if Y(i, 1) > 0 
-            fprintf('%.2f vs %.2f ... [idx: %04d] %s \n', Y(i, 1), ...
-                    my_predictions(i), i, movieList{i} );
-            mse = mse + (Y(i, 1) - my_predictions(i))^2;
-            cnt = cnt + 1;
+    for j = 1:size(R, 2)
+        for i = 1:size(R, 1)
+            if Y(i, j) > 0 
+                %fprintf('%.2f vs %.2f ... [user: %d, idx: %04d] %s \n',...
+                %    Y(i, j), predictions(i, j), j, i, movieList{i});
+                training_mse = training_mse + (Y(i, j) -...
+                    predictions(i, j))^2;
+                cnt = cnt + 1;
+            end
         end
     end
-    mse = mse / cnt;
-    fprintf('Training mean suquared error: %f on fold %d\n', mse,...
-        fold_num);
+    training_mse = training_mse / cnt;
+    fprintf('Training mean suquared error: %f on fold %d\n',...
+        training_mse, fold_num);
 
 
     % -----------------------------------------------------------
@@ -358,24 +440,25 @@ elseif( GRAD == 1 )
     cnt = 0;
     for user=1:1:num_users
         for movie = 1:size(testR, 1)
-            if testR(user, movie) > 0
+            if testR(movie, user) > 0
                 cnt = cnt + 1;
                 % get the movie index
                 m_id = testR(movie, user);
                 % get the estimated rating
-                est = prediction_grad(m_id, user) + Ymean(m_id);
+                est = predictions(m_id, user) + Ymean(m_id);
                 % get the rating given
                 rat = testY(movie, user);
                 % print it out
-                fprintf('USER[%04d]-MOVIE[%04d] rated: %d vs estimated:'...
-                    + '%.2f\n', user, m_id, rat, est);
+                %fprintf('USER[%04d]-MOVIE[%04d] rated: %f vs estimated: %.2f\n',...
+                %    user, m_id, rat, est);
                 % Mean square error
                 mse = mse + (est - rat)^2;
             end
         end
     end
-    mse = mse / cnt;
-    fprintf('Testing mean suquared error: %f on fold %d\n', mse, fold_num);
+    mse = sqrt(mse / cnt);
+    fprintf('Testing root mean suquared error: %f on fold %d\n', mse,...
+        fold_num);
 
 
 %end % if GRAD == 1
@@ -430,33 +513,63 @@ elseif( ALS > 0 )
     %  computing the predictions matrix.
     %
     prediction_alsfmincg = alsX * alsTheta'; % calculate the predictions
-    my_predictions = prediction_alsfmincg(:,1) + Ymean; 
+    predictions = prediction_alsfmincg + repmat(Ymean, 1,...
+        size(prediction_alsfmincg, 2)); 
     % take my predictions
-
-    [r, ix] = sort(my_predictions, 'descend');
-    adjust = 5.0/max(my_predictions);
-    fprintf('\nTop recommendations for first user:\n');
-    for i=1:20
-        j = ix(i);
-        fprintf('Predicting rating %.1f for movie %s\n', ...
-                my_predictions(j) * adjust, ...
-                movieList{j});
+    t_max_hlu = 0;
+    t_half_life = 0;
+    %hlu = 0;
+    for k = 1:num_users
+        max_list = zeros(num_movies, 1);
+        max_list = Y(:, k);
+        for i = 1:size(testY, 1)
+            if testY(i, k) > 0
+                max_list(testR(i, k)) = testY(i, k);
+            end
+        end
+        [max_r, max_ix] = sort(max_list, 'descend');
+        [r, ix] = sort(predictions(:, k), 'descend');
+        adjust = 5.0/max(predictions(:, k));
+        %fprintf('\nTop recommendations for %d user:\n', k);
+        max_hlu = 0;
+        half_life = 0;
+        for i = 1:list_len
+            j = ix(i);
+            %fprintf('User %d:\n', k);
+            %fprintf('Predicting rating %.1f for movie %s\n', ...
+            %        predictions(j, k) * adjust, movieList{j});
+            max_hlu = max_hlu + (max([max_r(i)-hlu_d, 0])/2^((i-1)/...
+                (hlu_alpha-1)));
+            half_life = half_life + (max([max_list(j, 1)-hlu_d, 0])/...
+                2^((i-1)/(hlu_alpha-1)));
+        end
+        t_half_life = t_half_life + half_life; 
+        t_max_hlu = t_max_hlu + max_hlu;
+        %hlu = hlu + (half_life / max_hlu);
     end
-
-    fprintf('\n\nOriginal ratings provided vs. estimated:\n');
-    mse = 0; 
+    %hlu = hlu / num_users;
+    hlu = t_half_life / t_max_hlu;
+    fprintf('Half-life utility: %f\n', hlu);
+    if isnan(hlu) == 1
+        pause;
+    end
+    %fprintf('\n\nOriginal ratings provided vs. estimated:\n');
+    training_mse = 0; 
     cnt = 0;
-    for i = 1:size(R, 1)
-        if R(i, 1) > 0 
-            fprintf('%.2f vs %.2f ... [idx: %04d] %s \n', Y(i, 1), ...
-                     my_predictions(i), i, movieList{i} );
-            mse = mse + (Y(i, 1) - my_predictions(i))^2;
-            cnt = cnt + 1;
+    for j = 1:size(R, 2)
+        for i = 1:size(R, 1)
+            if Y(i, j) > 0 
+                %fprintf('%.2f vs %.2f ... [user: %d, idx: %04d] %s \n',...
+                %    Y(i, j), predictions(i, j), j, i, movieList{i});
+                training_mse = training_mse + (Y(i, j) -...
+                    predictions(i, j))^2;
+                cnt = cnt + 1;
+            end
         end
     end
-    mse = mse / cnt;
-    fprintf('Training mean suquared error: %f on fold %d\n', mse,...
-        fold_num);
+    training_mse = training_mse / cnt;
+    fprintf('Training mean suquared error: %f on fold %d\n',...
+        training_mse, fold_num);
 
     % -----------------------------------------------------------
     % Part 5.3 Check the accuracy of estimation (fmincg)
@@ -472,19 +585,20 @@ elseif( ALS > 0 )
                 % get the movie index
                 m_id = testR(movie, user);
                 % get the estimated rating
-                est = prediction_alsfmincg(m_id, user) + Ymean(m_id);
+                est = predictions(m_id, user) + Ymean(m_id);
                 % get the rating given
                 rat = testY(movie, user);
                 % print it out
-                fprintf('USER[%04d]-MOVIE[%04d] rated: %d vs estimated:'...
-                    + '%.2f\n', user, m_id, rat, est);
+                %fprintf('USER[%04d]-MOVIE[%04d] rated: %f vs estimated: %.2f\n',...
+                %    user, m_id, rat, est);
                 % Mean square error
                 mse = mse + (est - rat)^2;
             end
         end
     end
-    mse = mse / cnt;
-    fprintf('Testing mean suquared error: %f on fold %d\n', mse, fold_num);
+    mse = sqrt(mse / cnt);
+    fprintf('Testing root mean suquared error: %f on fold %d\n',...
+        mse, fold_num);
 else
     fprintf('Parameter setting abnormal, no algorithm selected.');
     pause;

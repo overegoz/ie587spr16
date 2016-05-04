@@ -17,8 +17,17 @@ for i = 1:n
     line = fgets(fid);
     % Word Index (can ignore since it will be = i)
     [idx, movieName] = strtok(line, delimiter);
+    %[idx, movieName] = strtok(movieName, delimiter);
     % Actual Word
-    movieList{i} = strtrim(movieName);
+    if isempty(movieName) == 0
+        if movieName(1) == ':'
+            movieList{i} = strtrim(movieName(3:end));
+        else
+            movieList{i} = strtrim(movieName(2:end));
+        end
+    else
+        movieList{i} = 'no movie record';
+    end
 end
 fclose(fid);
 

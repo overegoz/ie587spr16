@@ -1,11 +1,11 @@
-function [R, Y] = new_ratings_Hsu(R, Y, movieList)
+function [R, Y, rating_num] = new_ratings_Hsu(R, Y, movieList, rating_num)
 %% Part 2.1: Entering ratings for a new user
 %  add ratings for a new user 
 %
 %movieList = read_mov_title_Hsu(movie_path, delimit, movie_num);
 
 %  Initialize my ratings
-my_ratings = zeros(movie_num, 1);
+my_ratings = zeros(size(R, 1), 1);
 
 %
 % I will give high ratings to action/adventure/animations
@@ -34,13 +34,16 @@ my_ratings(1314)= 4; % Surviving the Game (1994)
 my_ratings(1646)= 4; % Men With Guns (1997)
 
 fprintf('New user ratings:\n');
+rating_cnt = 0;
 for i = 1:length(my_ratings)
     if( my_ratings(i) > 0 )
         fprintf('Rated %d : %s\n', my_ratings(i), movieList{i});
+        rating_cnt = rating_cnt + 1;
     end
 end
 
-fprintf('\nProgram paused. Press enter to continue.\n');
-pause;
+%fprintf('\nProgram paused. Press enter to continue.\n');
+%pause;
+rating_num = [rating_cnt rating_num];
 Y = [my_ratings Y]; 
 R = [(my_ratings ~= 0) R];

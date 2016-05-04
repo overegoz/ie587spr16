@@ -1,0 +1,5 @@
+dataset, algorithm, max_iter_outer, max_iter_inner, lambda, num_features, RMSE, HLU
+100K, FMINGCon, 20, 0, 0.000000, 50, 3.855410, 0.006173
+100K, FMINGCon, 20, 0, 5.000000, 50, 3.725071, 0.143280
+100K, GRAD, 50, 0, 0.000000, 50, 4.122434, 0.048929
+100K, GRAD, 50, 0, 5.000000, 50, 4.122422, 0.048947
