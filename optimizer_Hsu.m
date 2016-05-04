@@ -323,7 +323,7 @@ if( FMINGCon == 1 )
                 % get the movie index
                 m_id = testR(movie, user);
                 % get the estimated rating
-                est = predictions(m_id, user) + Ymean(m_id);
+                est = predictions(m_id, user);
                 % get the rating given
                 rat = testY(movie, user);
                 % print it out
@@ -445,7 +445,7 @@ elseif( GRAD == 1 )
                 % get the movie index
                 m_id = testR(movie, user);
                 % get the estimated rating
-                est = predictions(m_id, user) + Ymean(m_id);
+                est = predictions(m_id, user);
                 % get the rating given
                 rat = testY(movie, user);
                 % print it out
@@ -585,7 +585,7 @@ elseif( ALS > 0 )
                 % get the movie index
                 m_id = testR(movie, user);
                 % get the estimated rating
-                est = predictions(m_id, user) + Ymean(m_id);
+                est = predictions(m_id, user);
                 % get the rating given
                 rat = testY(movie, user);
                 % print it out

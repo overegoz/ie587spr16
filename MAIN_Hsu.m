@@ -33,7 +33,8 @@ if size(n_movies, 2) ~= size(n_users, 2) || size(n_users, 2) ~=...
     fprintf('The numbers of data sets are different. Wish to go on?');
     pause;
 end
-alg = {'FMINGCon', 'GRAD', 'ALS_FMINCG'};
+%alg = {'FMINGCon', 'GRAD', 'ALS_FMINCG'};
+alg = {'FMINGCon', 'ALS_FMINCG'};
 lambda = [0, 5];
 num_features = [50];
 MAX_ITER_FMINCG = [20];
